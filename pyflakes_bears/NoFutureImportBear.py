@@ -110,8 +110,9 @@ class NoFutureImportBear(LocalBear):
             ):
         corrected_lines = set()
         for result in dependency_results.get(PyFlakesASTBear.name, []):
-            for node in result.get_nodes(result.module_scope,
-                                         FutureImportation):
+            future_nodes = list(result.get_nodes(result.module_scope,
+                                         FutureImportation))
+            for node in sorted(future_nodes, key=lambda x: x.source.lineno):
                 lineno = node.source.lineno
                 if lineno not in corrected_lines:
                     corrected, corrected_lines = self.remove_future_imports(
