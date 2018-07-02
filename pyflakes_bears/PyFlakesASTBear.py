@@ -4,8 +4,19 @@ from coalib.bears.LocalBear import LocalBear
 from coalib.results.HiddenResult import HiddenResult
 from coalib.results.Result import Result
 from pyflakes.checker import Checker
-from pyflakes.checker import ClassScope, FunctionScope, ModuleScope
-from pyflakes.checker import GeneratorScope, DoctestScope
+from pyflakes.checker import ClassDefinition, FunctionDefinition
+from pyflakes.checker import (ModuleScope, ClassScope, FunctionScope,
+                              GeneratorScope, DoctestScope)
+
+
+class PyFlakesChecker(Checker):
+    def __init__(self, tree, filename='(none)', builtins=None,
+                 withDoctest=False):
+        super().__init__(tree, filename='(none)', builtins=None,
+                         withDoctest=False)
+
+    def ARGUMENTS(self, node):
+        pass
 
 
 class PyFlakesResult(HiddenResult):
@@ -22,13 +33,43 @@ class PyFlakesResult(HiddenResult):
         self.pyflakes_messages = pyflakes_messages
 
     def get_scopes(self, scope_type, scopes):
-        return list(filter(lambda scope: isinstance(scope, scope_type),
+        return list(filter(lambda scope: type(scope) == scope_type,
                            scopes))
 
     def get_nodes(self, scope, node_type):
         for _, node in scope.items():
-            if isinstance(node, node_type):
+            if type(node) == node_type:
                 yield node
+
+    def get_node_scope(self, node):
+        result = PyFlakesChecker(node.source, filename='')
+        scope = self.get_scopes(ModuleScope, result.deadScopes)[0]
+        scope.parent = node
+        return scope
+
+    def get_class_definitions(self, module_scope, parent=None):
+        result = list()
+        for _, node in module_scope.items():
+            node.parent = parent
+            if type(node) == ClassDefinition:
+                result.append(node)
+            if any([type(node) == ClassDefinition,
+                    type(node) == FunctionDefinition]):
+                result.extend(self.get_class_definitions(
+                    self.get_node_scope(node), node))
+        return result
+
+    def get_function_definitions(self, module_scope, parent=None):
+        result = list()
+        for _, node in module_scope.items():
+            node.parent = parent
+            if type(node) == FunctionDefinition:
+                result.append(node)
+            if any([type(node) == ClassDefinition,
+                    type(node) == FunctionDefinition]):
+                result.extend(self.get_function_definitions(
+                    self.get_node_scope(node), node))
+        return result
 
 
 class PyFlakesASTBear(LocalBear):
