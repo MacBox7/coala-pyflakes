@@ -1,0 +1,404 @@
+from collections import namedtuple
+
+from coalib.bears.LocalBear import LocalBear
+from coalib.results.Result import Result
+from coalib.settings.Setting import typed_list
+from pyflakes.checker import Argument
+from pyflakes.checker import Assignment
+from pyflakes.checker import Binding
+from pyflakes.checker import ClassDefinition
+from pyflakes.checker import FunctionDefinition
+from pyflakes.checker import Importation
+from pyflakes.checker import ImportationFrom
+
+from pyflakes_bears.PyFlakesASTBear import PyFlakesASTBear
+
+
+class PEP8NamingBear(LocalBear):
+    """
+    LocalBear detecting PEP8 naming violations.
+
+    The pyflakes-enhanced-AST is used to parse nodes and
+    check naming violations
+    """
+
+    def __init__(self, Printer, LogPrinterMixin, timeout, debugger):
+        """
+        Initialize LocalBear with required parameters.
+
+        Without timeout and debugger being supplied here the
+        coala CI crashes.
+        """
+        super(PEP8NamingBear, self).__init__(Printer, LogPrinterMixin)
+        self.ignore = list()
+
+    AUTHORS = {'The coala developers'}
+    AUTHORS_EMAILS = {'coala-devel@googlegroups.com'}
+    LICENSE = 'AGPL-3.0'
+    BEAR_DEPS = {PyFlakesASTBear}
+
+    class ErrorCodes:
+        """
+        PEP8NamingBear error codes.
+
+        Convenient way to assert and present all warning generated
+        by PEP8NamingBear.
+        """
+
+        E01 = 'constant {name} imported as non constant {asname}'
+        E02 = 'lowercase {name} imported as non lowercase {asname}'
+        E03 = 'camelcase {name} imported as lowercase {asname}'
+        E04 = 'camelcase {name} imported as constant {asname}'
+        E05 = 'class name {name} should use CapWords convention'
+        E06 = 'function name {name} should be lowercase'
+        E07 = 'function name should not start or end with __'
+        E08 = 'argument name {name} should be lowercase'
+        E09 = 'first argument of a method should be named self'
+        E10 = 'first argument of a classmethod should be named cls'
+        E11 = 'variable {name} in class scope should not be mixedCase'
+        E12 = 'variable {name} in module scope should not be mixedCase'
+        E13 = 'variable {name} in function should be lowercase'
+
+    def is_valid_class_name(self, node):
+        """
+        Check if the class name is valid.
+
+        :param node:      Pyflakes node
+        :return:          bool True/False
+        """
+        name = node.name
+        if name in self.ignore:
+            return True
+        return name.lstrip('_')[:1].isupper()
+
+    def is_valid_function_name(self, node):
+        """
+        Check if the function name is valid.
+
+        :param node:      Pyflakes node
+        :return:          bool True/False
+        """
+        ignore_names = ['setUp', 'tearDown', 'setUpClass', 'tearDownClass']
+        ignore_names.extend(self.ignore)
+        name = node.name
+        if name in ignore_names:
+            return True
+        return name.islower()
+
+    def check_method_arg(self, node, class_method_decorators):
+        """
+        Check if first argument of method is self.
+
+        :param node:                     Pyflakes node
+        :param class_method_decorators:  List of class method decorators
+        :return:                         bool True/False
+        """
+        if not type(node.parent) == ClassDefinition:
+            return True
+        if node.name in self.ignore:
+            return True
+        # If this class inherits from `type`, it's a metaclass, and we'll
+        # consider all of it's methods to be classmethods.
+        cls_bases = node.parent.source.bases
+        if any(name for name in cls_bases
+               if hasattr(name, 'id') and name.id == 'type'):
+            return True
+        # Check if they are not classmethod or staticmethod
+        exceptions = ['classmethod', 'staticmethod']
+        exceptions.extend(class_method_decorators)
+        decorator_list = (node.id for node in node.source.decorator_list
+                          if hasattr(node, 'id'))
+        if any(map(lambda each: each in exceptions, decorator_list)):
+            return True
+        # Reserved names for classmethod
+        if node.name in ('__new__', '__init_subclass__'):
+            return True
+        # Check for the name of the first argument
+        if not node.source.args or not len(node.source.args.args):
+            return False
+        first_arg = node.source.args.args[0]
+        if first_arg.arg != 'self':
+            return False
+        return True
+
+    def check_class_method_arg(self, node, class_method_decorators):
+        """
+        Check if first argument of class method is cls.
+
+        :param node:                     Pyflakes node
+        :param class_method_decorators:  List of class method decorators
+        :return:                         bool True/False
+        """
+        if not type(node.parent) == ClassDefinition:
+            return True
+        if node.name in self.ignore:
+            return True
+        # Check if it is a classmethod
+        decorator_list = (node.id for node in node.source.decorator_list
+                          if hasattr(node, 'id'))
+        # List of decorators used for declaring class methods
+        whitelisted = ['classmethod']
+        whitelisted.extend(class_method_decorators)
+        if not any(map(lambda each: each in whitelisted, decorator_list)):
+            # If this class inherits from `type`, it's a metaclass, and we'll
+            # consider all of it's methods to be classmethods.
+            cls_bases = node.parent.source.bases
+            if not any(name for name in cls_bases
+                       if hasattr(name, 'id') and name.id == 'type'):
+                return True
+        # Check for the name of the first argument
+        if not node.source.args or not len(node.source.args.args):
+            return False
+        first_arg = node.source.args.args[0]
+        if first_arg.arg != 'cls':
+            return False
+        return True
+
+    def get_import_violation_code(self, name, asname):
+        """
+        Return import violation.
+
+        :param name:      Import name
+        :param asname:    Import alias
+        :return:          Error code corresponding to type
+                          of violations
+        """
+        if asname in self.ignore:
+            return False
+        if name == asname:
+            return False
+        if name.isupper():
+            if not asname.isupper():
+                return self.ErrorCodes.E01
+        elif name.islower():
+            if not asname.islower():
+                return self.ErrorCodes.E02
+        elif asname.islower():
+            return self.ErrorCodes.E03
+        else:
+            return self.ErrorCodes.E04
+
+    def check_importation(self, node):
+        """
+        Check pyflakes Importation node.
+
+        :param node:      Pyflakes node
+        :return:          Named tuple violation
+        """
+        name = node.fullName.split('.')[-1]
+        asname = node.name
+
+        violation = namedtuple('violation', ['name', 'asname', 'error'])
+        return violation(name,
+                         asname,
+                         self.get_import_violation_code(name, asname))
+
+    def check_from_importation(self, node):
+        """
+        Check pyflakes ImportationFrom node.
+
+        :param node:      Pyflakes node
+        :return:          bool True/False
+        """
+        name = node.real_name
+        asname = node.name
+
+        violation = namedtuple('violation', ['name', 'asname', 'error'])
+        return violation(name,
+                         asname,
+                         self.get_import_violation_code(name, asname))
+
+    def check_double_underscore(self, node):
+        """
+        Check if function name doesn't starts with `__`.
+
+        :param node:      Pyflakes node
+        :return:          bool True/False
+        """
+        if type(node.parent) == ClassDefinition:
+            return True
+
+        # PEP 562
+        whitelisted = ['__getattr__', '__dir__']
+        whitelisted.append(self.ignore)
+        if node.name in whitelisted:
+            return True
+
+        if '__' in (node.name[:2], node.name[-2:]):
+            return False
+        return True
+
+    def is_mixed_case(self, name):
+        """
+        Check if name is mixed case.
+
+        :param name:      Name string
+        :return:          bool True/False
+        """
+        return name.lower() != name and name.lstrip('_')[:1].islower()
+
+    def run(self, filename, file,
+            dependency_results=dict(),
+            ignore: typed_list(str) = (),
+            class_method_decorators: typed_list(str) = ()
+            ):
+        """
+        Yield all naming violations.
+
+        :param filename:                 The name of the file
+        :param file:                     The content of the file
+        :param dependency_results:       Results from the metabear
+        :param ignore:                   List of names to be ignored
+        :param class_method_decorators:  List of decorators that can
+                                         be used to represent
+                                         class methods.
+        """
+        self.ignore = ignore
+        for result in dependency_results.get(PyFlakesASTBear.name, []):
+            scopes = result.doctest_scopes
+            scopes.append(result.module_scope)
+            for scope in scopes:
+                for importation in result.get_all_nodes(scope, Importation):
+                    violation = self.check_importation(importation)
+                    if violation.error:
+                        yield Result.from_values(
+                            origin=self,
+                            message=violation.error.format(
+                                name=violation.name, asname=violation.asname),
+                            file=filename,
+                            line=importation.source.lineno)
+
+                for importation in result.get_all_nodes(scope,
+                                                        ImportationFrom):
+                    violation = self.check_from_importation(importation)
+                    if violation.error:
+                        yield Result.from_values(
+                            origin=self,
+                            message=violation.error.format(
+                                name=violation.name, asname=violation.asname),
+                            file=filename,
+                            line=importation.source.lineno)
+
+                for class_definition in result.get_all_nodes(scope,
+                                                             ClassDefinition):
+                    if not self.is_valid_class_name(class_definition):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E05.format(
+                                name=class_definition.name),
+                            file=filename,
+                            line=class_definition.source.lineno)
+
+                for function_definition in result.get_all_nodes(
+                                                  scope, FunctionDefinition):
+                    if not self.is_valid_function_name(function_definition):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E06.format(
+                                name=function_definition.name),
+                            file=filename,
+                            line=function_definition.source.lineno)
+
+                    if not self.check_double_underscore(function_definition):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E07,
+                            file=filename,
+                            line=function_definition.source.lineno)
+
+                    if not self.check_method_arg(function_definition,
+                                                 class_method_decorators):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E09,
+                            file=filename,
+                            line=function_definition.source.lineno)
+
+                    if not self.check_class_method_arg(
+                                                function_definition,
+                                                class_method_decorators):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E10,
+                            file=filename,
+                            line=function_definition.source.lineno)
+
+                for binding in result.get_nodes(scope, Binding):
+                    if self.is_mixed_case(binding.name):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E12.format(
+                                name=binding.name),
+                            file=filename,
+                            line=binding.source.lineno,
+                            column=binding.source.col_offset + 1)
+
+                for assignment in result.get_nodes(scope,
+                                                   Assignment):
+                    if self.is_mixed_case(assignment.name):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E12.format(
+                                name=assignment.name),
+                            file=filename,
+                            line=assignment.source.lineno,
+                            column=assignment.source.col_offset + 1)
+
+            for class_scope in result.class_scopes:
+                for binding in result.get_nodes(class_scope, Binding):
+                    if self.is_mixed_case(binding.name):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E11.format(
+                                name=binding.name),
+                            file=filename,
+                            line=binding.source.lineno,
+                            column=binding.source.col_offset + 1)
+
+                for assignment in result.get_nodes(class_scope,
+                                                   Assignment):
+                    if self.is_mixed_case(assignment.name):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E11.format(
+                                name=assignment.name),
+                            file=filename,
+                            line=assignment.source.lineno,
+                            column=assignment.source.col_offset + 1)
+
+            for function_scope in result.function_scopes:
+                for argument in result.get_nodes(function_scope, Argument):
+                    if not (argument.name.islower() or
+                            argument.name == '_' or
+                            argument.name in self.ignore):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E08.format(
+                                name=argument.name),
+                            file=filename,
+                            line=argument.source.lineno,
+                            column=argument.source.col_offset + 1)
+
+                for binding in result.get_nodes(function_scope, Binding):
+                    if not(binding.name.islower() or binding.name == '_' or
+                            binding.name in self.ignore):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E13.format(
+                                name=binding.name),
+                            file=filename,
+                            line=binding.source.lineno,
+                            column=binding.source.col_offset + 1)
+
+                for assignment in result.get_nodes(function_scope,
+                                                   Assignment):
+                    name = assignment.name
+                    if not(name.islower() or name == '_' or
+                           name in self.ignore):
+                        yield Result.from_values(
+                            origin=self,
+                            message=self.ErrorCodes.E13.format(
+                                name=assignment.name),
+                            file=filename,
+                            line=assignment.source.lineno,
+                            column=assignment.source.col_offset + 1)

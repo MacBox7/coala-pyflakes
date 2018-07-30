@@ -1,7 +1,9 @@
-import unittest
 import ast
-from pyflakes_generic_plugins.NoFutureImport import NoFutureImport
+import unittest
+
 from pyflakes.checker import Checker
+
+from pyflakes_generic_plugins.NoFutureImport import NoFutureImport
 
 
 class NoFutureImportTest(unittest.TestCase):

@@ -1,13 +1,17 @@
-import unittest
 from queue import Queue
+import unittest
+
+from coalib.settings.Section import Section
+from coalib.testing.LocalBearTestHelper import execute_bear
+from pyflakes.checker import ClassScope
+from pyflakes.checker import DoctestScope
+from pyflakes.checker import FunctionScope
+from pyflakes.checker import GeneratorScope
+from pyflakes.checker import Importation
+from pyflakes.checker import ModuleScope
+from pyflakes.messages import UnusedImport
 
 from pyflakes_bears.PyFlakesASTBear import PyFlakesASTBear
-from coalib.testing.LocalBearTestHelper import execute_bear
-from coalib.settings.Section import Section
-from pyflakes.checker import ClassScope, FunctionScope, ModuleScope
-from pyflakes.checker import GeneratorScope, DoctestScope
-from pyflakes.checker import Importation
-from pyflakes.messages import UnusedImport
 
 
 class PyFlakesASTBearTest(unittest.TestCase):

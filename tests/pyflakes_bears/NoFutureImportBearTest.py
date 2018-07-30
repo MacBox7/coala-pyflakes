@@ -1,9 +1,11 @@
 from queue import Queue
-from pyflakes_bears.NoFutureImportBear import NoFutureImportBear
-from coalib.testing.LocalBearTestHelper import LocalBearTestHelper
-from coalib.settings.Section import Section
-from coalib.results.Result import Result
+
 from coalib.results.Diff import Diff
+from coalib.results.Result import Result
+from coalib.settings.Section import Section
+from coalib.testing.LocalBearTestHelper import LocalBearTestHelper
+
+from pyflakes_bears.NoFutureImportBear import NoFutureImportBear
 
 
 class NoFutureImportTest(LocalBearTestHelper):
@@ -72,8 +74,8 @@ class NoFutureImportTest(LocalBearTestHelper):
                      'x = 2\n']
 
         diff = Diff(file_text)
-        diff.modify_line(2, 'x = 2\n')
-        diff.delete_line(1)
+        diff.delete_lines(1, 2)
+        diff.add_line(1, 'x = 2\n')
 
         self.check_results(
             self.uut,

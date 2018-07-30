@@ -4,6 +4,7 @@ environment:
     # /E:ON and /V:ON options are not enabled in the batch script intepreter
     # See: http://stackoverflow.com/a/13751649/163740
     CMD_IN_ENV: "cmd /E:ON /V:ON /C .\\.ci\\run_with_env.cmd"
+    PIP_CACHE_DIR: C:\pip_cache
 
   matrix:
     - PYTHON: "C:\\Python34"
@@ -14,8 +15,18 @@ environment:
       PYTHON_VERSION: "3.4.4"
       PYTHON_ARCH: "64"
 
+    - PYTHON: "C:\\Python36"
+      PYTHON_VERSION: "3.6"
+      PYTHON_ARCH: "32"
+
+    - PYTHON: "C:\\Python36-x64"
+      PYTHON_VERSION: "3.6"
+      PYTHON_ARCH: "64"
 cache:
   - "C:\\pip_cache"
+  - "node_modules"
+  - "C:\\Users\\appveyor\\AppData\\Local\\coala-bears\\coala-bears"
+  - "C:\\Users\\appveyor\\AppData\\Roaming\\nltk_data"
 
 branches:
   except:
@@ -30,15 +41,18 @@ install:
   # Check that we have the expected version and architecture for Python
   - "python --version"
   - "python -c \"import struct; print(struct.calcsize('P') * 8)\""
-
-  - "%CMD_IN_ENV% python -m pip install --cache-dir=C:\\pip_cache \
-     -r requirements.txt -r test-requirements.txt"
+  - "%CMD_IN_ENV% python -m pip install --upgrade setuptools==21 pip==9"
+  - "%CMD_IN_ENV% python -m pip install -r requirements.txt \
+    -r test-requirements.txt -r docs-requirements.txt"
 
 build: false  # Not a C# project, build stuff at the test step instead.
 
 test_script:
   - "%CMD_IN_ENV% py.test"
   - "%CMD_IN_ENV% python setup.py install"
+  - npm install csslint -g
+  - sed -i '/ShellCheckBear/d' .coafile
+  - "%CMD_IN_ENV% coala --ci"
 
 on_success:
   - codecov

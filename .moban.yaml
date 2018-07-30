@@ -14,11 +14,17 @@ docs_output_dir: docs
 ci_directory: .ci
 docs_source_dir: ./
 docs_toc: false
+zip_safe: false
+python_versions:
+  - 3.4.4
+  - 3.5
+  - 3.6
+test_with_alpine: false
 
 dependencies:
-  - coala==0.12.0.dev20180101025653
-  - coala-bears==0.12.0.dev20171110210444
-  - pyflakes~=1.5.0
+  - git+https://github.com/coala/coala#egg=coala
+  - git+https://github.com/macbox7/coala-bears.git@bump-pyflakes#egg=coala-bears
+  - git+https://github.com/PyCQA/pyflakes.git#egg=pyflakes
 
 packages:
   - pyflakes_bears
@@ -47,4 +53,3 @@ targets:
   - pyflakes_bears/VERSION: VERSION.jj2
   - requirements.txt: requirements.txt.jj2
   - test-requirements.txt: test-requirements.txt.jj2
-  - .ci/appveyor.yml: ci/appveyor.yml.jj2
